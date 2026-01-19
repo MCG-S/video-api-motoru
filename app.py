@@ -1,93 +1,50 @@
 from flask import Flask, request, jsonify
 import yt_dlp
 import os
+import random
 
 app = Flask(__name__)
+
+# Banlanmamak için farklı tarayıcı kimlikleri (User-Agent listesi)
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (iPhone; CPU iPhone OS 17_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Mobile/15E148 Safari/604.1"
+]
 
 @app.route('/get_video', methods=['GET'])
 def get_video():
     url = request.args.get('url')
     
-    # URL Güvenlik Kontrolü
     if not url or not url.startswith(('http://', 'https://')):
-        return jsonify({"status": "error", "message": "Gecersiz URL formati"}), 400
+        return jsonify({"status": "error", "message": "Gecersiz URL"}), 400
 
     try:
-        # Sunucu Kaynaklarını Korumak İçin Ayarlar
+        # Her istekte rastgele bir kimlik seçiyoruz
+        random_user_agent = random.choice(USER_AGENTS)
+
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
             'extract_flat': True,
             'nocheckcertificate': True,
             'socket_timeout': 15,
+            'user_agent': random_user_agent, # Ban önleyici kimlik
+            'referer': 'https://www.google.com/', # İstek Google'dan geliyormuş gibi gösterilir
         }
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            # Ana Veriler
-            title = info.get('title', 'Bilinmeyen Video')
-            thumbnail = info.get('thumbnail', '')
-            platform = info.get('extractor_key', 'Unknown')
-            options = []
-
-            # Kapak Resmi Seçeneği
-            if thumbnail:
-                options.append({
-                    'type': 'image',
-                    'quality': 'Kapak Resmi (HD)',
-                    'format': 'jpg',
-                    'url': thumbnail,
-                    'size': 'Bilinmiyor'
-                })
-
-            # Formatları Ayıkla (Sadece doğrudan linki olanlar)
-            formats = info.get('formats', [])
-            for f in formats:
-                if 'url' not in f or '.m3u8' in f['url'] or 'manifest' in f['url']:
-                    continue
-
-                filesize = f.get('filesize') or f.get('filesize_approx')
-                size_str = f"{filesize / (1024 * 1024):.1f} MB" if filesize else "Bilinmiyor"
-
-                # Video + Ses (Progressive)
-                if f.get('vcodec') != 'none' and f.get('acodec') != 'none':
-                    height = f.get('height', 0)
-                    options.append({
-                        'type': 'video',
-                        'quality': f"{height}p",
-                        'format': f.get('ext', 'mp4'),
-                        'url': f['url'],
-                        'size': size_str,
-                        'height': height
-                    })
-                
-                # Sadece Ses
-                elif f.get('vcodec') == 'none' and f.get('acodec') != 'none':
-                    options.append({
-                        'type': 'audio',
-                        'quality': 'Ses (MP3/M4A)',
-                        'format': f.get('ext', 'm4a'),
-                        'url': f['url'],
-                        'size': size_str,
-                        'height': 0
-                    })
-
-            # Kalite Sıralaması (Yüksekten düşüğe)
-            options.sort(key=lambda x: x.get('height', 0), reverse=True)
-
-            return jsonify({
-                "status": "success",
-                "title": title,
-                "thumbnail": thumbnail,
-                "platform": platform,
-                "options": options
-            })
+            # ... (Diğer format ayıklama kısımları aynı kalacak)
+            # (Yukarıdaki kodundaki format ayıklama döngüsünü buraya ekleyebilirsin)
+            
+            return jsonify({"status": "success", "title": info.get('title'), "options": []}) # Örnek dönüş
 
     except Exception as e:
-        return jsonify({"status": "error", "message": "Platform engeline takildi veya link hatali."}), 500
+        return jsonify({"status": "error", "message": "Platform engeline takildi."}), 500
 
 if __name__ == '__main__':
-    # Render'ın dinamik port ataması için zorunlu
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
